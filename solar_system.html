@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>النظام الشمسي - 3D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 300px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        #info-panel h2 {
+            margin-bottom: 10px;
+            color: #ffd700;
+        }
+        
+        #planet-info {
+            line-height: 1.6;
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            display: flex;
+            gap: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        button {
+            background: linear-gradient(45deg, #ffd700, #ff8c00);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+        }
+        
+        #speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: white;
+        }
+        
+        input[type="range"] {
+            width: 150px;
+        }
+        
+        .legend {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        
+        .legend-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .planet-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div class="legend">
+        <h3 style="margin-bottom: 10px; color: #ffd700;">الكواكب</h3>
+        <div id="legend-items"></div>
+    </div>
+    
+    <div id="info-panel">
+        <h2>معلومات الكوكب</h2>
+        <div id="planet-info">حرك الماوس فوق أي كوكب لعرض المعلومات</div>
+    </div>
+    
+    <div class="controls">
+        <button onclick="toggleAnimation()">إيقاف/تشغيل</button>
+        <button onclick="resetView()">إعادة التعيين</button>
+        <div id="speed-control">
+            <span>السرعة:</span>
+            <input type="range" id="speed-slider" min="0.1" max="5" step="0.1" value="1">
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // إعداد المشهد
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // إضاءة
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 2, 1000);
+        pointLight.position.set(0, 0, 0);
+        scene.add(pointLight);
+
+        // إنشاء النجوم في الخلفية
+        function createStars() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const starsMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 0.1,
+                transparent: true
+            });
+
+            const starsVertices = [];
+            for (let i = 0; i < 10000; i++) {
+                const x = (Math.random() - 0.5) * 2000;
+                const y = (Math.random() - 0.5) * 2000;
+                const z = (Math.random() - 0.5) * 2000;
+                starsVertices.push(x, y, z);
+            }
+
+            starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+            const stars = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(stars);
+        }
+        createStars();
+
+        // بيانات الكواكب (مقاييس تقريبية للأغراض التعليمية)
+        const planetsData = [
+            {
+                name: "عطارد",
+                nameEn: "Mercury",
+                radius: 0.4,
+                distance: 10,
+                color: 0xb5b5b5,
+                speed: 0.04,
+                info: "أقرب كوكب إلى الشمس، صغير وصخري، درجة حرارته متطرفة بين النهار والليل."
+            },
+            {
+                name: "الزهرة",
+                nameEn: "Venus",
+                radius: 0.9,
+                distance: 15,
+                color: 0xe6c87a,
+                speed: 0.015,
+                info: "أكثر الكواكب حرارة، له غلاف جوي كثيف وسام، يدور بعكس اتجاه معظم الكواكب."
+            },
+            {
+                name: "الأرض",
+                nameEn: "Earth",
+                radius: 1,
+                distance: 20,
+                color: 0x6b93d6,
+                speed: 0.01,
+                info: "كوكبنا الأزرق، الكوكب الوحيد المعروف بوجود الحياة عليه، له قمر واحد."
+            },
+            {
+                name: "المريخ",
+                nameEn: "Mars",
+                radius: 0.5,
+                distance: 25,
+                color: 0xc1440e,
+                speed: 0.008,
+                info: "الكوكب الأحمر، به أكبر بركان في المجموعة الشمسية، هدف مستقبلي للاستكشاف البشري."
+            },
+            {
+                name: "المشتري",
+                nameEn: "Jupiter",
+                radius: 2.5,
+                distance: 35,
+                color: 0xd8ca9d,
+                speed: 0.002,
+                info: "أكبر كواكب المجموعة الشمسية، عملاق غازي به بقعة حمراء عظيمة (عاصفة ضخمة)."
+            },
+            {
+                name: "زحل",
+                nameEn: "Saturn",
+                radius: 2.2,
+                distance: 45,
+                color: 0xead6b8,
+                speed: 0.0009,
+                hasRings: true,
+                info: "مشهور بحلقاته الرائعة المكونة من الجليد والصخور، عملاق غازي خفيف الكثافة."
+            },
+            {
+                name: "أورانوس",
+                nameEn: "Uranus",
+                radius: 1.6,
+                distance: 55,
+                color: 0xd1e7e7,
+                speed: 0.0004,
+                info: "عملاق جليدي يدور على جنبه، لونه أزرق مخضر بسبب الميثان في غلافه الجوي."
+            },
+            {
+                name: "نبتون",
+                nameEn: "Neptune",
+                radius: 1.5,
+                distance: 65,
+                color: 0x5b5ddf,
+                speed: 0.0001,
+                info: "أبعد الكواكب عن الشمس، عملاق جليدي به أسرع رياح في المجموعة الشمسية."
+            }
+        ];
+
+        // إنشاء الشمس
+        const sunGeometry = new THREE.SphereGeometry(4, 32, 32);
+        const sunMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffdd00,
+            emissive: 0xffdd00
+        });
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        scene.add(sun);
+
+        // إضافة توهج للشمس
+        const sunGlowGeometry = new THREE.SphereGeometry(4.5, 32, 32);
+        const sunGlowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffaa00,
+            transparent: true,
+            opacity: 0.3
+        });
+        const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
+        scene.add(sunGlow);
+
+        // إنشاء الكواكب
+        const planets = [];
+        const planetMeshes = [];
+
+        planetsData.forEach(data => {
+            // إنشاء مدار الكوكب
+            const orbitGeometry = new THREE.RingGeometry(data.distance - 0.05, data.distance + 0.05, 128);
+            const orbitMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide
+            });
+            const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
+            orbit.rotation.x = Math.PI / 2;
+            scene.add(orbit);
+
+            // إنشاء مجموعة للكوكب (للدوران)
+            const planetGroup = new THREE.Group();
+            scene.add(planetGroup);
+
+            // إنشاء الكوكب
+            const geometry = new THREE.SphereGeometry(data.radius, 32, 32);
+            const material = new THREE.MeshPhongMaterial({
+                color: data.color,
+                shininess: 30
+            });
+            const planet = new THREE.Mesh(geometry, material);
+            planet.position.x = data.distance;
+            planetGroup.add(planet);
+
+            // إضافة حلقات لزحل
+            if (data.hasRings) {
+                const ringGeometry = new THREE.RingGeometry(data.radius + 0.5, data.radius + 2, 64);
+                const ringMaterial = new THREE.MeshBasicMaterial({
+                    color: 0xc9b896,
+                    transparent: true,
+                    opacity: 0.8,
+                    side: THREE.DoubleSide
+                });
+                const rings = new THREE.Mesh(ringGeometry, ringMaterial);
+                rings.rotation.x = Math.PI / 2;
+                rings.rotation.y = Math.PI / 8;
+                planet.add(rings);
+            }
+
+            // تخزين البيانات
+            planets.push({
+                group: planetGroup,
+                mesh: planet,
+                data: data,
+                angle: Math.random() * Math.PI * 2
+            });
+            planetMeshes.push(planet);
+        });
+
+        // إضافة القمر للأرض
+        const earthData = planets.find(p => p.data.name === "الأرض");
+        if (earthData) {
+            const moonGeometry = new THREE.SphereGeometry(0.27, 16, 16);
+            const moonMaterial = new THREE.MeshPhongMaterial({ color: 0x888888 });
+            const moon = new THREE.Mesh(moonGeometry, moonMaterial);
+            moon.position.x = 2.5;
+            earthData.mesh.add(moon);
+            
+            // إضافة مدار القمر
+            const moonOrbitGeometry = new THREE.RingGeometry(2.4, 2.6, 32);
+            const moonOrbitMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            const moonOrbit = new THREE.Mesh(moonOrbitGeometry, moonOrbitMaterial);
+            moonOrbit.rotation.x = Math.PI / 2;
+            earthData.mesh.add(moonOrbit);
+        }
+
+        // إعداد الكاميرا
+        camera.position.z = 100;
+        camera.position.y = 50;
+        camera.lookAt(0, 0, 0);
+
+        // التحكم بالماوس
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+        let rotationSpeed = { x: 0.001, y: 0.001 };
+
+        document.addEventListener('mousedown', () => isDragging = true);
+        document.addEventListener('mouseup', () => isDragging = false);
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const deltaMove = {
+                    x: e.offsetX - previousMousePosition.x,
+                    y: e.offsetY - previousMousePosition.y
+                };
+
+                const deltaRotationQuaternion = new THREE.Quaternion()
+                    .setFromEuler(new THREE.Euler(
+                        toRadians(deltaMove.y * rotationSpeed.x * 100),
+                        toRadians(deltaMove.x * rotationSpeed.y * 100),
+                        0,
+                        'XYZ'
+                    ));
+
+                scene.quaternion.multiplyQuaternions(deltaRotationQuaternion, scene.quaternion);
+            }
+            previousMousePosition = { x: e.offsetX, y: e.offsetY };
+        });
+
+        function toRadians(angle) {
+            return angle * (Math.PI / 180);
+        }
+
+        // التكبير والتصغير
+        document.addEventListener('wheel', (event) => {
+            camera.position.z += event.deltaY * 0.1;
+            camera.position.z = Math.max(20, Math.min(200, camera.position.z));
+        });
+
+        // Raycaster للتفاعل مع الكواكب
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        document.addEventListener('mousemove', (event) => {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(planetMeshes);
+
+            if (intersects.length > 0) {
+                const planet = planets.find(p => p.mesh === intersects[0].object);
+                if (planet) {
+                    document.getElementById('planet-info').innerHTML = `
+                        <strong>${planet.data.name}</strong> (${planet.data.nameEn})<br>
+                        ${planet.data.info}<br>
+                        <small>البعد عن الشمس: ${planet.data.distance} وحدة فلكية</small><br>
+                        <small>الحجم النسبي: ${planet.data.radius}</small>
+                    `;
+                    document.body.style.cursor = 'pointer';
+                }
+            } else {
+                document.body.style.cursor = 'default';
+            }
+        });
+
+        // إنشاء legenda
+        const legendContainer = document.getElementById('legend-items');
+        planetsData.forEach((data, index) => {
+            const item = document.createElement('div');
+            item.className = 'legend-item';
+            item.innerHTML = `
+                <div class="planet-dot" style="background-color: #${data.color.toString(16)}"></div>
+                <span>${data.name}</span>
+            `;
+            item.addEventListener('click', () => {
+                const planet = planets[index];
+                camera.position.set(
+                    planet.group.position.x + 20,
+                    planet.group.position.y + 10,
+                    planet.group.position.z + 20
+                );
+                camera.lookAt(planet.group.position);
+            });
+            legendContainer.appendChild(item);
+        });
+
+        // متغيرات التحريك
+        let animationRunning = true;
+        let speedMultiplier = 1;
+
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+        }
+
+        function resetView() {
+            camera.position.set(0, 50, 100);
+            camera.lookAt(0, 0, 0);
+            scene.rotation.set(0, 0, 0);
+        }
+
+        document.getElementById('speed-slider').addEventListener('input', (e) => {
+            speedMultiplier = parseFloat(e.target.value);
+        });
+
+        // حلقة التحريك
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (animationRunning) {
+                // تدوير الشمس
+                sun.rotation.y += 0.001;
+
+                // تحريك الكواكب
+                planets.forEach(planet => {
+                    planet.angle += planet.data.speed * speedMultiplier;
+                    planet.group.position.x = Math.cos(planet.angle) * planet.data.distance;
+                    planet.group.position.z = Math.sin(planet.angle) * planet.data.distance;
+                    
+                    // دوران الكوكب حول نفسه
+                    planet.mesh.rotation.y += 0.01;
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // التعامل مع تغيير حجم النافذة
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
